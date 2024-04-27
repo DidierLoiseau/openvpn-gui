@@ -57,6 +57,7 @@
 #include "misc.h"
 #include "access.h"
 #include "save_pass.h"
+#include "totp_concat.h"
 #include "env_set.h"
 #include "echo.h"
 #include "pkcs11.h"
@@ -580,6 +581,11 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                 }
 
             }
+            else if (IsTotpConcatEnabled(param->c->config_name))
+            {
+                HWND wnd_challenge = GetDlgItem(hwndDlg, ID_EDT_AUTH_CHALLENGE);
+                SendMessage(wnd_challenge, EM_SETPASSWORDCHAR, 0, 0);
+            }
             if (RecallUsername(param->c->config_name, username))
             {
                 SetDlgItemTextW(hwndDlg, ID_EDT_AUTH_USER, username);
@@ -589,6 +595,7 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
             {
                 SetDlgItemTextW(hwndDlg, ID_EDT_AUTH_PASS, password);
                 if (username[0] != L'\0' && !(param->flags & FLAG_CR_TYPE_SCRV1)
+                    && !IsTotpConcatEnabled(param->c->config_name)
                     && password[0] != L'\0' && param->c->failed_auth_attempts == 0)
                 {
                     /* user/pass available and no challenge response needed: skip dialog
@@ -604,7 +611,8 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                 {
                     SendMessage(GetDlgItem(hwndDlg, ID_EDT_AUTH_PASS), EM_SETSEL, 0, MAKELONG(0, -1));
                 }
-                else if (param->flags & FLAG_CR_TYPE_SCRV1)
+                else if ((param->flags & FLAG_CR_TYPE_SCRV1)
+                    || IsTotpConcatEnabled(param->c->config_name))
                 {
                     SetFocus(GetDlgItem(hwndDlg, ID_EDT_AUTH_CHALLENGE));
                 }
@@ -661,7 +669,8 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                         /* enable OK button only if username and either password or response are filled */
                         BOOL enableOK = GetWindowTextLength(GetDlgItem(hwndDlg, ID_EDT_AUTH_USER))
                                         && (GetWindowTextLength(GetDlgItem(hwndDlg, ID_EDT_AUTH_PASS))
-                                            || ((param->flags & FLAG_CR_TYPE_SCRV1)
+                                            || (((param->flags & FLAG_CR_TYPE_SCRV1)
+                                                || IsTotpConcatEnabled(param->c->config_name))
                                                 && GetWindowTextLength(GetDlgItem(hwndDlg, ID_EDT_AUTH_CHALLENGE)))
                                             );
                         EnableWindow(GetDlgItem(hwndDlg, IDOK), enableOK);
@@ -711,6 +720,10 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                     if (param->flags & FLAG_CR_TYPE_SCRV1)
                     {
                         ManagementCommandFromTwoInputsBase64(param->c, "password \"Auth\" \"SCRV1:%s:%s\"", hwndDlg, ID_EDT_AUTH_PASS, ID_EDT_AUTH_CHALLENGE);
+                    }
+                    else if (IsTotpConcatEnabled(param->c->config_name))
+                    {
+                        ManagementCommandFromTwoInputs(param->c, "password \"Auth\" \"%s%s\"", hwndDlg, ID_EDT_AUTH_PASS, ID_EDT_AUTH_CHALLENGE);
                     }
                     else
                     {
@@ -1416,6 +1429,10 @@ OnPassword(connection_t *c, char *msg)
             param->flags |= FLAG_CR_TYPE_SCRV1;
             param->flags |= (*(chstr + 3) != '0') ? FLAG_CR_ECHO : 0;
             param->str = strdup(chstr + 5);
+            LocalizedDialogBoxParamEx(ID_DLG_AUTH_CHALLENGE, c->hwndStatus, UserAuthDialogFunc, (LPARAM) param);
+        }
+        else if (IsTotpConcatEnabled(c->config_name))
+        {
             LocalizedDialogBoxParamEx(ID_DLG_AUTH_CHALLENGE, c->hwndStatus, UserAuthDialogFunc, (LPARAM) param);
         }
         else

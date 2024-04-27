@@ -175,6 +175,11 @@ IsKeyPassSaved(UNUSED const WCHAR *config_name)
 {
     return 0;
 }
+BOOL
+IsTotpConcatEnabled(const WCHAR* config_name)
+{
+    return 0;
+}
 void
 env_item_del_all(UNUSED struct env_item *head)
 {
